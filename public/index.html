@@ -1,0 +1,218 @@
+<!doctype html>
+<html ng-app="zwaveApp">
+    <head>
+        <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.8/angular.min.js"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <script src="app.js"></script>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+        <script src="bootstrap2/bootstrap.min.js"></script>
+
+        <link href="bootstrap2/bootstrap.min.css" rel="stylesheet">
+
+        <style>
+            .node-container {
+                display: flex;
+                flex-wrap: wrap;
+                flex-direction: column;
+                justify-content: space-between;
+                margin: 20px;
+            }
+
+            .node {
+                margin: 5px;
+                padding: 8px;
+                flex: 1 1 auto;
+                width: 350px;
+            }
+
+            .node h1 {
+                font-size: 1em;
+                line-height: 1em;
+                margin: 0 0 5px 0;
+                padding: 2px;
+                border-bottom: 1px ridge lightgray;
+            }
+
+            .node-end {
+                flex: 20 1 auto;
+                zborder: 1px solid blue;
+            }
+
+            .node-value {
+                margin-top: 3px;
+                margin-bottom: 3px;
+            }
+
+            .node-value:hover {
+                background: cornsilk;
+            }
+
+            .subname {
+                color: grey;
+                font-size: x-small;
+                margin-left: 4px;
+            }
+
+            .modal-body {
+                max-height: 600px;
+            }
+
+            .comclass_37,
+            .comclass_48,
+            .comclass_49 {
+                color: darkgreen;
+            }
+
+            .comclass_50 {
+                color: limegreen;
+            }
+
+            .comclass_128 {
+                color: blue;
+                zfont-size: smaller;
+            }
+
+            .comclass_112,
+            .comclass_132 {
+                color: orange;
+                zfont-size: smaller;
+            }
+
+            .comclass_113 {
+                color: red;
+                zfont-size: smaller;
+            }
+
+            .comclass_32,
+            .comclass_39,
+            .comclass_94,
+            .comclass_115,
+            .comclass_117,
+            .comclass_134 {
+                color: lightgrey;
+                zfont-size: smaller;
+            }
+
+        </style>
+
+    </head>
+    <body ng-controller="MainController">
+        <div style="float: right; margin: 20px;">
+            <span>Queue {{sendQueueCount}}</span>
+            <button ng-click="addNode()" class="btn">Add</button>
+            <button ng-click="removeNode()" class="btn">Remove</button>
+            <button ng-click="healNetwork()" class="btn">Heal</button>
+            <button ng-click="softReset()" class="btn">Reset</button>
+            <button ng-click="showCustomCommand()" class="btn">Custom Command</button>
+        </div>
+
+        <h1 style="margin: 20px;">Z-Wave Network</h1>
+
+        <div  class="node-container">
+
+            <div ng-repeat="node in nodes" class="well node">
+                <a href="#" ng-click="nodeSettings(node.id)">
+                    <i ng-if="!node.dead" class="icon-cog" style="float: right;" title="Details"></i>
+                    <i ng-if="node.dead" class="icon-ban-circle" style="float: right;" title="Node Dead"></i>
+                </a>
+                <span ng-if="node.battery_value" title="{{node.battery_value.label}}" style="float: right; font-size: x-small; margin-right: 4px; color: darkolivegreen;">{{node.battery_value.value}}{{node.battery_value.units}}</span>
+                <h1>{{node.id}}. {{node.name}}<span ng-if="node.name == null || node.name == ''">Node {{node.id}}</span>
+                    <span class="subname">{{node.info.manufacturer}} {{node.info.product}}</span>&nbsp;
+                </h1>
+
+                <div ng-repeat="value in node.primary_values" title="{{value.value_id}}">
+                    <div ng-switch="value.class_id" class="node-value">
+                        <span ng-switch-when="32"></span>
+                        <span ng-switch-when="37">{{value.label}}={{value.value ? 'ON' : 'OFF'}} <button ng-click="toggleSwitch(value)" class="btn btn-mini" ng-class="{'btn-success': value.value == false, 'btn-danger': value.value == true}" style="float: right;">{{value.value == true ? 'off' : 'on'}}</button></span>
+                        <span ng-switch-when="48">{{value.label}}={{value.value ? 'ACTIVE' : 'INACTIVE'}}</span>
+                        <span ng-switch-when="49">{{value.label}}={{value.value}}{{value.units}}</span>
+                        <span ng-switch-default>{{value.label}}={{value.value}}</span>
+                    </div>
+                </div>
+
+                <div ng-if="node.lastEvent">Last Event: {{node.lastEvent}}</div>
+
+            </div>
+
+            <div class="node-end"></div>
+
+            <div id="customCommand" class="modal hide">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                    <h3>Custom Command</h3>
+                </div>
+                <div class="modal-body">
+
+                    Method: <input type="text" ng-model="customCommandMethod"/><br/>
+                    Params: <textarea rows="10" ng-model="customCommandParams"></textarea>
+
+                </div>
+                <div class="modal-footer">
+                    <a href="#" class="btn" data-dismiss="modal">Close</a>
+                    <a href="#" class="btn btn-primary" data-dismiss="modal" ng-click="customCommand()">Send</a>
+                </div>
+            </div>
+
+            <div id="nodeDetails" class="modal hide">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+                    <div ng-if="selection.nameEdit != null">
+                        <input type="text" id="nameEditBox" ng-model="selection.nameEdit" ng-enter="saveName()" ng-blur="cancelEditName()">
+                    </div>
+                    <div ng-if="selection.nameEdit == null">
+                        <h3 ng-click="editName()">
+                            {{selection.node.name}}<span ng-if="selection.node.name == null || selection.node.name == ''">Node {{selection.node.id}}</span>
+                            <span class="subname">{{selection.node.info.manufacturer}} {{selection.node.info.product}}</span>
+                        </h3>
+                    </div>
+                </div>
+                <div class="modal-body">
+
+                    <ul class="nav nav-tabs">
+                        <li class="active"><a href="#tab-command-classes" data-toggle="tab">Command Classes</a></li>
+                        <li><a href="#tab-logs" data-toggle="tab">Logs</a></li>
+                        <li><a href="#tab-neighbors" data-toggle="tab">Neighbors</a></li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <div id="tab-command-classes" class="tab-pane active">
+                            <div ng-repeat="class in selection.node.classes">
+                                <div ng-repeat="value in class" class="node-value comclass_{{value.class_id}}" title="{{value.help}}">
+                                    <div ng-switch="value.class_id" style="clear: both;">
+                                        <a class="btn btn-info btn-mini" style="float: right;" ng-if="value.type == 'button'" ng-click="pressButton(value)">Button</a>
+                                        <span ng-switch-when="37">{{value.value_id}}: {{value.label}}={{value.value ? 'ON' : 'OFF'}}
+                                            <button ng-click="toggleSwitch(value)" class="btn btn-mini" ng-class="{'btn-success': value.value == false, 'btn-danger': value.value == true}" style="float: right;">{{value.value == true ? 'off' : 'on'}}</button>
+                                        </span>
+                                        <span ng-switch-when="48">{{value.value_id}}: {{value.label}}={{value.value ? 'ACTIVE' : 'INACTIVE'}}</span>
+                                        <span ng-switch-when="49">{{value.value_id}}: {{value.label}}={{value.value}}{{value.units}}</span>
+                                        <span ng-switch-when="112">{{value.value_id}}: {{value.label}}={{value.value}}
+                                            <button ng-if="value.type != 'button'" class="btn btn-mini" style="float: right" ng-click="configureValue(value)"><i class="icon-wrench"></i></button>
+                                        </span>
+                                        <span ng-switch-default>{{value.value_id}}: {{value.label}}={{value.value}}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="tab-logs" class="tab-pane">
+                            <div ng-repeat="log in selection.node.log">
+                                {{log}}
+                            </div>
+                        </div>
+                        <div id="tab-neighbors" class="tab-pane">
+                            Neighbors: {{selection.node.neighbors}}<span ng-if="selection.node.neighborsUpdating"><b> Updating...</b></span>
+                            <button ng-click="getNeighbors(selection.node.id)">Refresh</button>
+                            <hr/>
+                            <button ng-click="healNode(selection.node.id)">Heal</button>
+                            <button ng-click="replaceFailedNode(selection.node.id)" class="btn">Replace Failed</button>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <a href="#" class="btn" data-dismiss="modal">Close</a>
+                </div>
+            </div>
+
+        </div>
+    </body>
+</html>

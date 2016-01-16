@@ -1,0 +1,21 @@
+{
+  "name": "nslhome-zwave-controller",
+  "version": "1.0.0",
+  "description": "Basic Z-Wave controller for the nslhome automation platform.",
+  "author": "Nick Largent",
+  "license": "MIT",
+  "private": true,
+  "main": "zwave-controller.js",
+  "scripts": {
+    "start": "node zwave-controller.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "zwave-controller": "./zwave-controller.js"
+  },
+  "dependencies": {
+    "express": "3.*",
+    "openzwave-shared": "^1.1.6",
+    "socket.io": "^1.3.7"
+  }
+}
